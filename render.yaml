@@ -1,0 +1,47 @@
+# Blueprint de Render para el backend. Las credenciales (sync: false) se cargan en el panel de Render
+# o por API; nunca se guardan en el repositorio.
+services:
+  - type: web
+    name: agente-proyectos
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.11
+      - key: MASTER_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: MODEL_EXECUTOR
+        value: gemini-3.8-flash
+      - key: MODEL_REVIEWER
+        value: gemini-3.5-flash
+      - key: MODEL_APPROVER
+        value: gemini-3.5-flash
+      - key: TRELLO_BOARD_ID
+        value: 6a957e8e28b2f661cd7804ba
+      - key: GITHUB_REPO
+        value: kiramman-mp3/EcosistemaKaren
+      - key: GITHUB_BRANCH
+        value: develop
+      - key: TIMEZONE
+        value: America/Guayaquil
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TRELLO_API_KEY
+        sync: false
+      - key: TRELLO_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: BOOTSTRAP_USERNAME
+        sync: false
+      - key: BOOTSTRAP_PASSWORD
+        sync: false
