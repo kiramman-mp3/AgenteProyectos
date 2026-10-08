@@ -1,0 +1,9 @@
+{
+  "descripcion": "Reglas de autorización aplicadas por el Agente Aprobador. Ninguna acción se ejecuta sin pasar por Revisor y Aprobador.",
+  "acciones_permitidas": ["reprogramar", "cambiar_prioridad", "reasignar", "cambiar_estado", "comentar", "crear_issue"],
+  "auto_ejecutables": ["comentar"],
+  "auto_ejecucion_riesgo_maximo": "bajo",
+  "prohibidas": ["modificar_codigo", "hacer_commit", "hacer_push", "eliminar_tarjeta", "archivar_tarjeta"],
+  "escalar_si_reprogramacion_mayor_a_dias": 14,
+  "max_propuestas_por_analisis": 10
+}
