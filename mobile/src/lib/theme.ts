@@ -54,6 +54,13 @@ export function statusColor(t: Theme, status: string): string {
   );
 }
 
+export const ROLE_LABEL: Record<string, string> = {
+  gestor: 'Gestor del proyecto',
+  desarrollador: 'Desarrollador',
+  admin: 'Gestor del proyecto',
+  observador: 'Desarrollador',
+};
+
 export const PROPOSAL_STATUS_LABEL: Record<string, string> = {
   en_revision: 'En revisión',
   rechazada_revisor: 'Rechazada por Revisor',

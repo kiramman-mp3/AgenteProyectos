@@ -33,3 +33,6 @@ def notify(level: str, title: str, body: str = "", entity: str | None = None, en
         "entity": entity,
         "entity_id": None if entity_id is None else str(entity_id),
     })
+    if level == "critico":
+        from . import mailer
+        mailer.notify_managers_async(level, title, body)

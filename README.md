@@ -115,13 +115,17 @@ El backend está publicado en **https://agente-proyectos-hy7x.onrender.com** (pl
 - Las credenciales (`GEMINI_API_KEY`, `TRELLO_API_KEY`, `TRELLO_TOKEN`, `GITHUB_TOKEN`) y el usuario inicial
   (`BOOTSTRAP_USERNAME` / `BOOTSTRAP_PASSWORD`) se definen como variables de entorno en Render. En cada arranque,
   `app/bootstrap.py` las cifra en la base con `MASTER_KEY` y crea o actualiza el usuario.
-- **Plan gratuito:** el disco es efímero. Tras cada redespliegue o reinicio, la bitácora, las propuestas y los
-  reportes empiezan de cero; las credenciales y el usuario se recrean solos. Para conservar el historial, cambia
-  a un plan con disco persistente y apunta `DB_PATH` al disco (por ejemplo, `/var/data/agente.db`).
+- **Base de datos persistente:** en Render se usa PostgreSQL en **Neon** (`DATABASE_URL`), así que la bitácora,
+  las propuestas, los reportes y los usuarios se conservan entre redespliegues. Sin `DATABASE_URL` el backend usa
+  SQLite local. Para probar contra PostgreSQL: `TEST_DATABASE_URL=<url> pytest` (cada prueba usa un esquema temporal).
+- **Correo de retrasos críticos:** Render gratuito bloquea SMTP, por eso en la nube se usa un relé HTTPS con
+  Google Apps Script (`deploy/apps_script_mailer.gs`, variables `MAIL_TRANSPORT=apps_script`, `MAIL_WEBHOOK_URL` y
+  `MAIL_WEBHOOK_SECRET`). En local también funciona `MAIL_TRANSPORT=smtp` con una contraseña de aplicación de Gmail.
+  Los avisos llegan al correo de los usuarios con rol **gestor**.
 - **Evitar que se duerma:** el servicio se hace ping a sí mismo cada 10 minutos usando `RENDER_EXTERNAL_URL`.
   Si Render lo reinicia, se despierta con la siguiente visita (la primera respuesta puede tardar unos 50 s).
-- Para cambiar la contraseña en la nube, edita `BOOTSTRAP_PASSWORD` en *Render → agente-proyectos →
-  Environment*.
+- `BOOTSTRAP_USERNAME` / `BOOTSTRAP_PASSWORD` solo crean el gestor inicial si no existe. Después, las contraseñas
+  y los usuarios se administran desde la app (*Mi cuenta* y *Gestionar usuarios*).
 
 ## 3. Flujo multiagente
 
@@ -155,9 +159,9 @@ Tareas automáticas: análisis de retrasos cada `ANALYSIS_INTERVAL_MINUTES`, rev
 | REQ-06 | Reporte semanal automático | `orchestrator.generate_weekly_report` (cifras calculadas sin IA + redacción del Ejecutor validada por el Revisor); app → **Reportes** |
 | REQ-07 | Revisión de código | `orchestrator.run_code_review`: diffs de GitHub + análisis estático (`code_analysis.py`) + IA según `standards.md`; el Revisor descarta falsos positivos; app → **Código** |
 | REQ-08 | Flujo Ejecutor → Revisor → Aprobador | `orchestrator.process_proposal`; detalle de cada etapa en la pantalla de la propuesta |
-| REQ-09 | Gestor acepta, rechaza o modifica | Endpoints `/proposals/{id}/approve`, `/reject` y `/request-changes`; notificaciones en la app |
-| REQ-10 | Historial completo con fecha/hora y actor | Tabla `audit_log` (agente, humano o sistema); app → **Bitácora** (icono de reloj en el Panel) |
-| REQ-11 | Permisos y protección de credenciales | Credenciales cifradas con Fernet (AES-128-CBC + HMAC) usando `MASTER_KEY`; roles admin/gestor/observador; JWT; contraseñas PBKDF2-SHA256; token de sesión en el almacenamiento seguro del teléfono (`expo-secure-store`); las credenciales de Trello/GitHub nunca llegan a la app |
+| REQ-09 | Gestor acepta, rechaza o modifica | Endpoints `/proposals/{id}/approve`, `/reject` y `/request-changes`; notificaciones en la app y **correo al gestor** ante retrasos, bloqueos o fallos críticos (`mailer.py`) |
+| REQ-10 | Historial completo con fecha/hora y actor | Tabla `audit_log` (agente, humano o sistema) en PostgreSQL persistente (Neon); app → **Bitácora** (icono de reloj en el Panel) |
+| REQ-11 | Permisos y protección de credenciales | Credenciales cifradas con Fernet (AES-128-CBC + HMAC) usando `MASTER_KEY`; roles **gestor** (decide, ejecuta y administra usuarios) y **desarrollador** (consulta); usuarios y contraseñas gestionados desde la app, con contraseña temporal que se cambia obligatoriamente en el primer ingreso; JWT; contraseñas PBKDF2-SHA256; token de sesión en el almacenamiento seguro del teléfono (`expo-secure-store`); las credenciales de Trello/GitHub nunca llegan a la app |
 
 Pruebas automatizadas (`backend/tests`): estados, riesgo, dependencias, avance, detección de cambios, cifrado,
 validaciones del Revisor, análisis estático, flujo multiagente completo con aprobación del gestor, permisos por rol,

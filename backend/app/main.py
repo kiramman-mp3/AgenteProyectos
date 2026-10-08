@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 from . import audit, bootstrap, db, orchestrator, scheduler
 from .config import settings
-from .security import create_token, current_user, require, secrets_status, verify_password
+from .security import (ROLES, create_token, current_user, generate_password, hash_password, require,
+                       secrets_status, verify_password)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -29,6 +30,28 @@ app = FastAPI(title="Agente de Seguimiento de Proyectos", version="1.0.0", lifes
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+class UserCreateIn(BaseModel):
+    username: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9._-]+$")
+    full_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=200, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: str = "desarrollador"
+
+
+class UserUpdateIn(BaseModel):
+    full_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=200, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: str | None = None
+    active: bool | None = None
+
+
+USER_FIELDS = "id, username, full_name, email, role, active, must_change_password, created_at"
 
 
 class DecisionIn(BaseModel):
@@ -67,12 +90,85 @@ def login(body: LoginIn):
         audit.log(body.username, "login_fallido", "usuario", actor_type="humano")
         raise HTTPException(401, "Usuario o contraseña incorrectos")
     audit.log(user["username"], "login", "usuario", user["id"], actor_type="humano")
-    return {"token": create_token(user), "username": user["username"], "role": user["role"]}
+    return {"token": create_token(user), "username": user["username"], "role": user["role"],
+            "full_name": user.get("full_name"), "must_change_password": bool(user.get("must_change_password"))}
 
 
 @app.get("/auth/me")
 def me(user=Depends(current_user)):
     return user
+
+
+@app.post("/auth/change-password")
+def change_password(body: PasswordChangeIn, user=Depends(current_user)):
+    row = db.query_one("SELECT password_hash FROM users WHERE id = ?", (user["id"],))
+    if not verify_password(body.current_password, row["password_hash"]):
+        raise HTTPException(400, "La contraseña actual no es correcta")
+    if body.new_password == body.current_password:
+        raise HTTPException(400, "La nueva contraseña debe ser distinta de la actual")
+    db.execute("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+               (hash_password(body.new_password), user["id"]))
+    audit.log(user["username"], "contrasena_cambiada", "usuario", user["id"], actor_type="humano")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- Usuarios (REQ-11, solo gestor)
+
+def _user_or_404(uid: int) -> dict:
+    u = db.query_one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    return u
+
+
+@app.get("/users")
+def users_list(user=Depends(require("users"))):
+    return db.query(f"SELECT {USER_FIELDS} FROM users ORDER BY role, username")
+
+
+@app.post("/users")
+def user_create(body: UserCreateIn, user=Depends(require("users"))):
+    if body.role not in ROLES:
+        raise HTTPException(400, f"Rol inválido; opciones: {', '.join(ROLES)}")
+    if db.query_one("SELECT id FROM users WHERE username = ?", (body.username,)):
+        raise HTTPException(409, f"El usuario '{body.username}' ya existe")
+    temp = generate_password()
+    uid = db.insert("users", {"username": body.username, "password_hash": hash_password(temp), "role": body.role,
+                              "full_name": body.full_name or None, "email": body.email or None,
+                              "must_change_password": 1, "created_at": db.now_iso()})
+    audit.log(user["username"], "usuario_creado", "usuario", uid, {"usuario": body.username, "rol": body.role},
+              actor_type="humano")
+    return {**_user_or_404(uid), "temporary_password": temp}
+
+
+@app.patch("/users/{uid}")
+def user_update(uid: int, body: UserUpdateIn, user=Depends(require("users"))):
+    target = _user_or_404(uid)
+    changes = body.model_dump(exclude_unset=True)
+    if "role" in changes and changes["role"] not in ROLES:
+        raise HTTPException(400, f"Rol inválido; opciones: {', '.join(ROLES)}")
+    if target["id"] == user["id"] and (changes.get("active") is False or changes.get("role", "gestor") != "gestor"):
+        raise HTTPException(400, "No puedes desactivarte ni quitarte el rol de gestor a ti mismo")
+    if "active" in changes:
+        changes["active"] = 1 if changes["active"] else 0
+    for k in ("full_name", "email"):
+        if k in changes and not changes[k]:
+            changes[k] = None
+    if changes:
+        db.update("users", uid, changes)
+        audit.log(user["username"], "usuario_actualizado", "usuario", uid,
+                  {"usuario": target["username"], **changes}, actor_type="humano")
+    return _user_or_404(uid)
+
+
+@app.post("/users/{uid}/reset-password")
+def user_reset_password(uid: int, user=Depends(require("users"))):
+    target = _user_or_404(uid)
+    temp = generate_password()
+    db.execute("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?", (hash_password(temp), uid))
+    audit.log(user["username"], "contrasena_restablecida", "usuario", uid, {"usuario": target["username"]},
+              actor_type="humano")
+    return {"username": target["username"], "temporary_password": temp}
 
 
 # ---------------------------------------------------------------- Seguimiento

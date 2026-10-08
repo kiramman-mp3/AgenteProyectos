@@ -59,7 +59,12 @@ def sync_board(actor: str = SYSTEM) -> dict:
     for a in activities:
         if a["status"] in (tracking.RETRASADA, tracking.BLOQUEADA) and prev_status.get(a["id"]) != a["status"]:
             audit.notify("critico", f"Actividad {a['status']}: {a['name']}",
-                         f"Responsables: {', '.join(a['responsables']) or 'sin asignar'}", "actividad", a["id"])
+                         f"Fase/lista: {a['list']}\n"
+                         f"Responsables: {', '.join(a['responsables']) or 'sin asignar'}\n"
+                         f"Fecha límite: {(a['due'] or 'sin fecha')[:10]}\n"
+                         f"Motivos: {'; '.join(a['risk_reasons']) or a['status']}\n"
+                         f"Impacta a {len(a['blocks'])} actividad(es) dependiente(s)\n"
+                         f"Tarjeta: {a.get('url') or ''}", "actividad", a["id"])
     db.kv_set("activity_status", {a["id"]: a["status"] for a in activities})
 
     meta = {k: board[k] for k in ("lists", "members", "labels")}

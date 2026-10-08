@@ -3,8 +3,25 @@ import * as SecureStore from 'expo-secure-store';
 const SERVER_KEY = 'server_url';
 const SESSION_KEY = 'session';
 
-export type Role = 'admin' | 'gestor' | 'observador';
-export type Session = { token: string; username: string; role: Role };
+export type Role = 'gestor' | 'desarrollador' | 'admin' | 'observador';
+export type Session = {
+  token: string;
+  username: string;
+  role: Role;
+  full_name?: string | null;
+  must_change_password?: boolean;
+};
+
+export type User = {
+  id: number;
+  username: string;
+  full_name: string | null;
+  email: string | null;
+  role: Role;
+  active: number;
+  must_change_password: number;
+  created_at: string;
+};
 
 export type ActivityStatus = 'pendiente' | 'en_ejecucion' | 'completada' | 'retrasada' | 'bloqueada';
 
@@ -153,6 +170,13 @@ export async function loadSession(): Promise<Session | null> {
   return cachedSession;
 }
 
+export async function updateSession(patch: Partial<Session>) {
+  if (!cachedSession) return null;
+  cachedSession = { ...cachedSession, ...patch };
+  await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(cachedSession));
+  return cachedSession;
+}
+
 export async function clearSession() {
   cachedSession = null;
   await SecureStore.deleteItemAsync(SESSION_KEY);
@@ -215,4 +239,14 @@ export const api = {
   audit: (actorType?: string) => request<AuditEntry[]>(`/audit${actorType ? `?actor_type=${actorType}` : ''}`),
   notifications: () => request<Notification[]>('/notifications'),
   readAllNotifications: () => post('/notifications/read-all'),
+  me: () => request<User>('/auth/me'),
+  changePassword: (current_password: string, new_password: string) =>
+    post<{ ok: boolean }>('/auth/change-password', { current_password, new_password }),
+  users: () => request<User[]>('/users'),
+  createUser: (body: { username: string; full_name?: string; email?: string; role: Role }) =>
+    post<User & { temporary_password: string }>('/users', body),
+  updateUser: (id: number, body: Partial<{ full_name: string; email: string; role: Role; active: boolean }>) =>
+    request<User>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetPassword: (id: number) =>
+    post<{ username: string; temporary_password: string }>(`/users/${id}/reset-password`),
 };

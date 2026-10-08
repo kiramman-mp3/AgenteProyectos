@@ -52,7 +52,7 @@ def env(board, monkeypatch):
         monkeypatch.setattr(f"app.agents.{mod}.chat_json", fake_llm)
     db.insert("users", {"username": "gestor1", "password_hash": hash_password("clave1234"), "role": "gestor",
                         "created_at": db.now_iso()})
-    db.insert("users", {"username": "obs", "password_hash": hash_password("clave1234"), "role": "observador",
+    db.insert("users", {"username": "obs", "password_hash": hash_password("clave1234"), "role": "desarrollador",
                         "created_at": db.now_iso()})
 
 

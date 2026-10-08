@@ -16,11 +16,31 @@ os.environ["GITHUB_REPO"] = "demo/repo"
 
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
+    """SQLite temporal por prueba. Con TEST_DATABASE_URL, usa un esquema PostgreSQL temporal que se borra al final."""
     from app import db
     from app.config import settings
     monkeypatch.setattr(settings, "db_path", tmp_path / "test.db")
     monkeypatch.setattr(db, "_conn", None)
-    yield
+    monkeypatch.setattr(db, "_pool", None)
+    pg_url = os.getenv("TEST_DATABASE_URL")
+    if not pg_url:
+        monkeypatch.setattr(settings, "database_url", "")
+        yield
+        return
+    import uuid
+    import psycopg
+    schema = f"test_{uuid.uuid4().hex[:10]}"
+    with psycopg.connect(pg_url, autocommit=True) as c:
+        c.execute(f"CREATE SCHEMA {schema}")
+    sep = "&" if "?" in pg_url else "?"
+    monkeypatch.setattr(settings, "database_url", f"{pg_url}{sep}options=-csearch_path%3D{schema}")
+    try:
+        yield
+    finally:
+        if db._pool is not None:
+            db._pool.close()
+        with psycopg.connect(pg_url, autocommit=True) as c:
+            c.execute(f"DROP SCHEMA {schema} CASCADE")
 
 
 def iso(days: float) -> str:

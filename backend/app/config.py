@@ -18,6 +18,17 @@ class Settings:
     jwt_secret: str = os.getenv("JWT_SECRET", "")
     jwt_expire_hours: int = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
     db_path: Path = BASE_DIR / os.getenv("DB_PATH", "data/agente.db")
+    # Si se define, se usa PostgreSQL (p. ej. Neon) en lugar de SQLite.
+    database_url: str = os.getenv("DATABASE_URL", "").strip()
+
+    # Correo para retrasos críticos: "smtp" (Gmail con contraseña de aplicación), "apps_script"
+    # (webhook HTTPS de Google Apps Script, necesario en Render gratuito que bloquea SMTP) o vacío (desactivado).
+    mail_transport: str = os.getenv("MAIL_TRANSPORT", "").strip().lower()
+    smtp_host: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port: int = int(os.getenv("SMTP_PORT", "465"))
+    smtp_user: str = os.getenv("SMTP_USER", "")
+    mail_webhook_url: str = os.getenv("MAIL_WEBHOOK_URL", "")
+    app_url: str = os.getenv("APP_URL", os.getenv("RENDER_EXTERNAL_URL", ""))
 
     llm_provider: str = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
     model_executor: str = os.getenv("MODEL_EXECUTOR", "anthropic/claude-sonnet-4.5")

@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
-import { clearSession, loadSession, login as apiLogin, Session, setUnauthorizedHandler } from './api';
+import { clearSession, loadSession, login as apiLogin, Session, setUnauthorizedHandler, updateSession } from './api';
 
 type AuthState = {
   session: Session | null;
@@ -8,6 +8,7 @@ type AuthState = {
   login: (server: string, username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   canDecide: boolean;
+  passwordChanged: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -30,10 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(await apiLogin(server, username, password));
   }, []);
 
+  const passwordChanged = useCallback(async () => {
+    setSession(await updateSession({ must_change_password: false }));
+  }, []);
+
   const canDecide = session?.role === 'gestor' || session?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ session, loading, login, logout, canDecide }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ session, loading, login, logout, canDecide, passwordChanged }}>{children}</AuthContext.Provider>
   );
 }
 

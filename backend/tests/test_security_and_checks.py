@@ -105,6 +105,7 @@ def test_bootstrap_from_environment(monkeypatch):
     users = db.query("SELECT username, role, password_hash FROM users")
     assert len(users) == 1 and users[0]["role"] == "gestor"
     assert verify_password("clave-segura-1", users[0]["password_hash"])
+    # Si el usuario ya existe, el arranque no pisa la contraseña cambiada desde la app.
     monkeypatch.setenv("BOOTSTRAP_PASSWORD", "otra-clave-22")
     bootstrap.run()
-    assert verify_password("otra-clave-22", db.query_one("SELECT password_hash FROM users")["password_hash"])
+    assert verify_password("clave-segura-1", db.query_one("SELECT password_hash FROM users")["password_hash"])

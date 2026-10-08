@@ -12,14 +12,19 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from . import db
 from .config import settings
 
-# Permisos por rol. 'observador' solo lee; 'gestor' decide sobre propuestas; 'admin' además gestiona usuarios.
+# Permisos por rol. El gestor del proyecto decide sobre propuestas, lanza procesos y administra usuarios;
+# los desarrolladores consultan el estado del proyecto. 'admin' y 'observador' se mantienen por compatibilidad.
+ROLES = ("gestor", "desarrollador")
 ROLE_PERMISSIONS = {
+    "gestor": {"read", "decide", "run", "users"},
+    "desarrollador": {"read"},
+    "admin": {"read", "decide", "run", "users"},
     "observador": {"read"},
-    "gestor": {"read", "decide", "run"},
-    "admin": {"read", "decide", "run", "admin"},
 }
 
-SECRET_NAMES = ("openrouter_api_key", "gemini_api_key", "trello_api_key", "trello_token", "github_token")
+SECRET_NAMES = ("openrouter_api_key", "gemini_api_key", "trello_api_key", "trello_token", "github_token",
+                "smtp_password", "mail_webhook_secret")
+OPTIONAL_SECRETS = {"smtp_password", "mail_webhook_secret"}
 LLM_SECRET = {"openrouter": "openrouter_api_key", "gemini": "gemini_api_key"}
 
 
@@ -54,7 +59,8 @@ def secrets_status() -> dict[str, bool]:
     """Estado de las credenciales requeridas por la configuración actual (solo la del proveedor de IA activo)."""
     stored = {r["name"] for r in db.query("SELECT name FROM secrets")}
     llm_secret = LLM_SECRET.get(settings.llm_provider)
-    required = [n for n in SECRET_NAMES if n not in LLM_SECRET.values() or n == llm_secret]
+    required = [n for n in SECRET_NAMES
+                if n not in OPTIONAL_SECRETS and (n not in LLM_SECRET.values() or n == llm_secret)]
     return {n: n in stored for n in required}
 
 
@@ -64,6 +70,13 @@ def hash_password(password: str) -> str:
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000)
     return f"pbkdf2_sha256$310000${salt.hex()}${digest.hex()}"
+
+
+def generate_password(length: int = 12) -> str:
+    """Contraseña temporal legible (sin caracteres ambiguos como 0/O o 1/l)."""
+    import secrets
+    alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def verify_password(password: str, stored: str) -> bool:
@@ -98,7 +111,8 @@ def current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) 
         payload = jwt.decode(creds.credentials, settings.jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesión inválida o expirada")
-    user = db.query_one("SELECT id, username, role, active FROM users WHERE username = ?", (payload["sub"],))
+    user = db.query_one("SELECT id, username, role, full_name, email, active, must_change_password FROM users "
+                        "WHERE username = ?", (payload["sub"],))
     if not user or not user["active"]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario inactivo")
     return user

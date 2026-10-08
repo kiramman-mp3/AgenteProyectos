@@ -3,7 +3,7 @@
   python -m app.cli gen-key                     Genera una MASTER_KEY para el .env
   python -m app.cli set-secret <nombre>         Guarda una credencial cifrada (se pide sin mostrarla)
   python -m app.cli secrets                     Muestra qué credenciales están configuradas
-  python -m app.cli create-user <usuario> <rol> Crea un usuario (rol: admin | gestor | observador)
+  python -m app.cli create-user <usuario> <rol> Crea un usuario (rol: gestor | desarrollador)
   python -m app.cli set-password <usuario>      Cambia la contraseña de un usuario
   python -m app.cli check                       Prueba las conexiones con el proveedor de IA, Trello y GitHub
   python -m app.cli run <analisis|codigo|reporte|sync>  Ejecuta un proceso manualmente
@@ -14,7 +14,7 @@ import sys
 from cryptography.fernet import Fernet
 
 from . import audit, db
-from .security import SECRET_NAMES, hash_password, secrets_status, set_secret
+from .security import ROLES, SECRET_NAMES, hash_password, secrets_status, set_secret
 
 
 def main(argv: list[str]) -> None:
@@ -40,8 +40,8 @@ def main(argv: list[str]) -> None:
         for name, ok in secrets_status().items():
             print(f"  {'✔' if ok else '✘'} {name}")
     elif cmd == "create-user":
-        if len(args) != 2 or args[1] not in ("admin", "gestor", "observador"):
-            sys.exit("Uso: create-user <usuario> <admin|gestor|observador>")
+        if len(args) != 2 or args[1] not in ROLES:
+            sys.exit(f"Uso: create-user <usuario> <{'|'.join(ROLES)}>")
         pwd = getpass.getpass("Contraseña: ")
         if len(pwd) < 8 or pwd != getpass.getpass("Repite la contraseña: "):
             sys.exit("Las contraseñas no coinciden o tienen menos de 8 caracteres.")

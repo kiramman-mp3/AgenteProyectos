@@ -14,7 +14,7 @@ const ORDER: ActivityStatus[] = ['completada', 'en_ejecucion', 'pendiente', 'ret
 export default function DashboardScreen() {
   const t = useTheme();
   const navigation = useNavigation();
-  const { session, logout, canDecide } = useAuth();
+  const { canDecide } = useAuth();
   const { data, error, refreshing, refresh } = useLoader(api.dashboard);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -38,21 +38,13 @@ export default function DashboardScreen() {
           <Pressable onPress={() => router.push('/audit')} hitSlop={8}>
             <Ionicons name="time-outline" size={22} color={t.text} />
           </Pressable>
-          <Pressable
-            hitSlop={8}
-            onPress={() =>
-              Alert.alert('Cerrar sesión', `¿Salir como ${session?.username}?`, [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Salir', style: 'destructive', onPress: () => void logout() },
-              ])
-            }
-          >
-            <Ionicons name="log-out-outline" size={22} color={t.text} />
+          <Pressable onPress={() => router.push('/account')} hitSlop={8}>
+            <Ionicons name="person-circle-outline" size={24} color={t.text} />
           </Pressable>
         </View>
       ),
     });
-  }, [navigation, data?.unread_notifications, t, session, logout]);
+  }, [navigation, data?.unread_notifications, t]);
 
   const run = async (key: string, fn: () => Promise<unknown>, message: string) => {
     setBusy(key);

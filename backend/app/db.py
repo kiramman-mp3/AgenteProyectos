@@ -1,8 +1,11 @@
-"""Persistencia en SQLite: proyecto, propuestas, bitácora de auditoría, reportes y credenciales cifradas."""
+"""Persistencia: proyecto, propuestas, bitácora de auditoría, reportes y credenciales cifradas.
+
+Usa PostgreSQL (p. ej. Neon) si DATABASE_URL está definida; si no, un archivo SQLite local.
+Las consultas se escriben con marcadores '?' y se adaptan al motor correspondiente.
+"""
 import json
 import sqlite3
 import threading
-from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from .config import settings
@@ -14,8 +17,11 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'gestor', 'observador')),
+    role TEXT NOT NULL,
+    full_name TEXT,
+    email TEXT,
     active INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
@@ -120,44 +126,97 @@ CREATE TABLE IF NOT EXISTS notifications (
 """
 
 
+# Columnas agregadas después de la primera versión del esquema (bases ya existentes).
+MIGRATIONS = [
+    ("users", "full_name", "TEXT"),
+    ("users", "email", "TEXT"),
+    ("users", "must_change_password", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _connect() -> sqlite3.Connection:
+def is_postgres() -> bool:
+    return settings.database_url.startswith(("postgres://", "postgresql://"))
+
+
+_lock = threading.RLock()
+_conn: sqlite3.Connection | None = None   # SQLite
+_pool = None                              # PostgreSQL (psycopg_pool.ConnectionPool)
+
+
+def _pg_sql(sql: str) -> str:
+    return sql.replace("%", "%%").replace("?", "%s")
+
+
+def _init_sqlite() -> sqlite3.Connection:
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(settings.db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    c = sqlite3.connect(settings.db_path, check_same_thread=False)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA foreign_keys = ON")
+    c.executescript(SCHEMA)
+    for table, column, ddl in MIGRATIONS:
+        cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    c.commit()
+    return c
 
 
-_conn: sqlite3.Connection | None = None
+def _init_postgres():
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+
+    pool = ConnectionPool(settings.database_url, min_size=1, max_size=4, open=True,
+                          kwargs={"row_factory": dict_row}, check=ConnectionPool.check_connection)
+    with pool.connection() as c:
+        c.execute(SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY"))
+        for table, column, ddl in MIGRATIONS:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+    return pool
 
 
-def conn() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        _conn = _connect()
-        _conn.executescript(SCHEMA)
-    return _conn
+def conn():
+    """Inicializa la conexión (y el esquema) la primera vez."""
+    global _conn, _pool
+    with _lock:
+        if is_postgres():
+            if _pool is None:
+                _pool = _init_postgres()
+            return _pool
+        if _conn is None:
+            _conn = _init_sqlite()
+        return _conn
 
 
-@contextmanager
-def tx():
+def _run(sql: str, params: tuple, fetch: str | None):
+    if is_postgres():
+        with conn().connection() as c:
+            cur = c.execute(_pg_sql(sql), params)
+            if fetch == "all":
+                return [dict(r) for r in cur.fetchall()]
+            if fetch == "one":
+                return cur.fetchone()
+            return None
     with _lock:
         c = conn()
         try:
-            yield c
+            cur = c.execute(sql, params)
+            result = [dict(r) for r in cur.fetchall()] if fetch == "all" else (
+                dict(r) if fetch == "one" and (r := cur.fetchone()) else None)
+            if fetch == "id":
+                result = cur.lastrowid
             c.commit()
+            return result
         except Exception:
             c.rollback()
             raise
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:
-    with _lock:
-        return [dict(r) for r in conn().execute(sql, params).fetchall()]
+    return _run(sql, params, "all")
 
 
 def query_one(sql: str, params: tuple = ()) -> dict | None:
@@ -165,15 +224,17 @@ def query_one(sql: str, params: tuple = ()) -> dict | None:
     return rows[0] if rows else None
 
 
-def execute(sql: str, params: tuple = ()) -> int:
-    with tx() as c:
-        return c.execute(sql, params).lastrowid
+def execute(sql: str, params: tuple = ()) -> None:
+    _run(sql, params, None)
 
 
 def insert(table: str, data: dict) -> int:
     cols = ", ".join(data)
     marks = ", ".join("?" for _ in data)
-    return execute(f"INSERT INTO {table} ({cols}) VALUES ({marks})", tuple(data.values()))
+    sql = f"INSERT INTO {table} ({cols}) VALUES ({marks})"
+    if is_postgres():
+        return _run(sql + " RETURNING id", tuple(data.values()), "one")["id"]
+    return _run(sql, tuple(data.values()), "id")
 
 
 def update(table: str, row_id: int, data: dict) -> None:

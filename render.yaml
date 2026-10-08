@@ -45,3 +45,15 @@ services:
         sync: false
       - key: BOOTSTRAP_PASSWORD
         sync: false
+      - key: BOOTSTRAP_FULL_NAME
+        sync: false
+      - key: BOOTSTRAP_EMAIL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: MAIL_TRANSPORT
+        value: apps_script
+      - key: MAIL_WEBHOOK_URL
+        sync: false
+      - key: MAIL_WEBHOOK_SECRET
+        sync: false

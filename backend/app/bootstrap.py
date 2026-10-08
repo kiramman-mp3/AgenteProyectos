@@ -2,14 +2,14 @@
 puede ser efímero: en cada arranque se cifran las credenciales en la base y se asegura el usuario inicial.
 
 Variables reconocidas (todas opcionales):
-  OPENROUTER_API_KEY, GEMINI_API_KEY, TRELLO_API_KEY, TRELLO_TOKEN, GITHUB_TOKEN
-  BOOTSTRAP_USERNAME, BOOTSTRAP_PASSWORD, BOOTSTRAP_ROLE (por defecto 'gestor')
+  OPENROUTER_API_KEY, GEMINI_API_KEY, TRELLO_API_KEY, TRELLO_TOKEN, GITHUB_TOKEN, SMTP_PASSWORD, MAIL_WEBHOOK_SECRET
+  BOOTSTRAP_USERNAME, BOOTSTRAP_PASSWORD, BOOTSTRAP_ROLE (por defecto 'gestor'), BOOTSTRAP_FULL_NAME, BOOTSTRAP_EMAIL
 """
 import logging
 import os
 
 from . import audit, db
-from .security import SECRET_NAMES, get_secret, hash_password, set_secret, verify_password
+from .security import ROLES, SECRET_NAMES, get_secret, hash_password, set_secret
 
 log = logging.getLogger("agente.bootstrap")
 
@@ -33,14 +33,12 @@ def run() -> None:
     role = os.getenv("BOOTSTRAP_ROLE", "gestor").strip()
     if not (username and password):
         return
-    if len(password) < 8 or role not in ("admin", "gestor", "observador"):
-        log.error("BOOTSTRAP_PASSWORD debe tener 8+ caracteres y BOOTSTRAP_ROLE ser admin|gestor|observador")
+    if len(password) < 8 or role not in ROLES:
+        log.error("BOOTSTRAP_PASSWORD debe tener 8+ caracteres y BOOTSTRAP_ROLE ser %s", "|".join(ROLES))
         return
-    user = db.query_one("SELECT id, password_hash FROM users WHERE username = ?", (username,))
-    if user is None:
+    # Solo crea el usuario inicial si no existe: después, la contraseña se administra desde la app.
+    if db.query_one("SELECT id FROM users WHERE username = ?", (username,)) is None:
         db.insert("users", {"username": username, "password_hash": hash_password(password), "role": role,
-                            "created_at": db.now_iso()})
+                            "full_name": os.getenv("BOOTSTRAP_FULL_NAME") or None,
+                            "email": os.getenv("BOOTSTRAP_EMAIL") or None, "created_at": db.now_iso()})
         audit.log(audit.SYSTEM, "usuario_creado_desde_entorno", "usuario", username, {"rol": role})
-    elif not verify_password(password, user["password_hash"]):
-        db.execute("UPDATE users SET password_hash = ?, role = ? WHERE id = ?", (hash_password(password), role, user["id"]))
-        audit.log(audit.SYSTEM, "usuario_actualizado_desde_entorno", "usuario", username, {"rol": role})

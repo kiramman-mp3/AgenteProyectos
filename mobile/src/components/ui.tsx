@@ -90,7 +90,7 @@ export function Section({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
     <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700', letterSpacing: 0.6, marginTop: 8 }}>
-      {String(children).toUpperCase()}
+      {(Array.isArray(children) ? children.join('') : String(children)).toUpperCase()}
     </Text>
   );
 }
