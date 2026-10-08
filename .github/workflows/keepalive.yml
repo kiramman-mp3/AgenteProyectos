@@ -1,0 +1,22 @@
+# Mantiene despierto el backend en el plan gratuito de Render (se duerme tras 15 min sin tráfico).
+# El propio backend también se hace ping cada 10 min; este flujo lo despierta si Render lo reinicia.
+# Para desactivarlo: GitHub → Actions → "Keepalive backend" → Disable workflow.
+name: Keepalive backend
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 90 https://agente-proyectos-hy7x.onrender.com/health; then exit 0; fi
+            sleep 20
+          done
+          exit 1
