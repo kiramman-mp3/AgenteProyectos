@@ -12,6 +12,9 @@ os.environ["JWT_SECRET"] = "test-secret-" + "x" * 32
 os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["TRELLO_BOARD_ID"] = "board1"
 os.environ["GITHUB_REPO"] = "demo/repo"
+# Las pruebas no deben depender del .env local (correo o base de datos reales).
+os.environ["MAIL_TRANSPORT"] = ""
+os.environ["DATABASE_URL"] = ""
 
 
 @pytest.fixture(autouse=True)

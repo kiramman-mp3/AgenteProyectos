@@ -336,6 +336,27 @@ def read_all(user=Depends(require("read"))):
     return {"ok": True}
 
 
+@app.post("/notifications/test-email")
+def test_email(user=Depends(require("users"))):
+    """Envía un correo de prueba a los gestores para verificar la configuración del correo."""
+    from . import mailer
+    if not mailer.enabled():
+        raise HTTPException(400, "El correo está desactivado (MAIL_TRANSPORT vacío)")
+    to = mailer.manager_emails()
+    if not to:
+        raise HTTPException(400, "Ningún gestor tiene correo registrado")
+    text, html_body = mailer._render("info", "Correo de prueba",
+                                     f"Enviado por {user['username']} desde el Agente de Proyectos.\n"
+                                     "Los avisos de retrasos críticos llegarán a esta dirección.")
+    try:
+        mailer.send(to, "[Agente de proyectos] Correo de prueba", text, html_body)
+    except Exception as e:  # noqa: BLE001
+        audit.log(user["username"], "correo_prueba_fallido", "correo", None, {"error": str(e)[:300]}, actor_type="humano")
+        raise HTTPException(502, f"No se pudo enviar el correo: {e}")
+    audit.log(user["username"], "correo_prueba_enviado", "correo", None, {"para": to}, actor_type="humano")
+    return {"ok": True, "to": to, "transport": settings.mail_transport}
+
+
 @app.get("/config")
 def config(user=Depends(require("read"))):
     from .agents.approver import load_policy

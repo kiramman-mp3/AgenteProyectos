@@ -88,3 +88,12 @@ def test_apps_script_transport(monkeypatch):
     set_secret("mail_webhook_secret", "s3cr3t")
     mailer.send(["a@b.com"], "Asunto", "texto", "<p>html</p>")
     assert captured["secret"] == "s3cr3t" and captured["to"] == "a@b.com" and captured["htmlBody"] == "<p>html</p>"
+
+
+def test_test_email_endpoint(client, monkeypatch):
+    sent = []
+    assert client.post("/notifications/test-email").status_code == 400  # correo desactivado
+    monkeypatch.setattr(settings, "mail_transport", "apps_script")
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html_body=None: sent.append(to))
+    r = client.post("/notifications/test-email")
+    assert r.status_code == 200 and r.json()["to"] == ["gestor@example.com"] and sent == [["gestor@example.com"]]
