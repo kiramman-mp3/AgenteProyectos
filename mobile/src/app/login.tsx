@@ -9,7 +9,7 @@ import { useTheme } from '@/lib/theme';
 export default function Login() {
   const t = useTheme();
   const { login } = useAuth();
-  const [server, setServer] = useState('http://192.168.1.10:8000');
+  const [server, setServer] = useState('https://agente-proyectos-hy7x.onrender.com');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);

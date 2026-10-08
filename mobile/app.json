@@ -37,6 +37,13 @@
     "scheme": "agenteproyectos",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "07ed97e6-697e-4fc2-a3c4-e4e863853daf"
+      }
+    },
+    "owner": "kiramman"
   }
 }

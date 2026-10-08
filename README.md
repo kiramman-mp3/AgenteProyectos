@@ -106,6 +106,23 @@ Al terminar, EAS entrega un enlace para descargar el `.apk` e instalarlo en el t
 > desarrollo y la demostración. En producción, publica el backend detrás de HTTPS (por ejemplo, en Render o Railway, o
 > con un túnel como Cloudflare Tunnel) y desactiva esa opción en `app.json`.
 
+## Despliegue en la nube (Render)
+
+El backend está publicado en **https://agente-proyectos-hy7x.onrender.com** (plan gratuito, servicio
+`agente-proyectos`), con despliegue automático en cada push a `main`. La configuración de referencia está en
+`render.yaml`.
+
+- Las credenciales (`GEMINI_API_KEY`, `TRELLO_API_KEY`, `TRELLO_TOKEN`, `GITHUB_TOKEN`) y el usuario inicial
+  (`BOOTSTRAP_USERNAME` / `BOOTSTRAP_PASSWORD`) se definen como variables de entorno en Render. En cada arranque,
+  `app/bootstrap.py` las cifra en la base con `MASTER_KEY` y crea o actualiza el usuario.
+- **Plan gratuito:** el disco es efímero. Tras cada redespliegue o reinicio, la bitácora, las propuestas y los
+  reportes empiezan de cero; las credenciales y el usuario se recrean solos. Para conservar el historial, cambia
+  a un plan con disco persistente y apunta `DB_PATH` al disco (por ejemplo, `/var/data/agente.db`).
+- **Evitar que se duerma:** el servicio se hace ping a sí mismo cada 10 minutos usando `RENDER_EXTERNAL_URL`.
+  Si Render lo reinicia, se despierta con la siguiente visita (la primera respuesta puede tardar unos 50 s).
+- Para cambiar la contraseña en la nube, edita `BOOTSTRAP_PASSWORD` en *Render → agente-proyectos →
+  Environment*.
+
 ## 3. Flujo multiagente
 
 1. **Ejecutor** sincroniza Trello, detecta actividades retrasadas, bloqueadas o en riesgo, analiza causa e impacto y
